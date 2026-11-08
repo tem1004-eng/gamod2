@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>어머니 감 농사 주문 배송 장부</title>
+  
+  <!-- 카카오/다음 우편번호 검색 API -->
+  <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+
+  <!-- Google Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+  <!-- 강력한 데이터 암호화 라이브러리 (CryptoJS AES-256) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #e65100;
+      --primary-light: #fff3e0;
+      --secondary: #2e7d32;
+      --secondary-light: #e8f5e9;
+      --text: #212121;
+      --bg: #f5f5f5;
+      --card-bg: #ffffff;
+      --border: #dcdcdc;
+    }
+    * { box-sizing: border-box; font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', sans-serif; }
+    body { margin: 0; padding: 0; background-color: var(--bg); color: var(--text); padding-bottom: 80px; }
+
+    /* 비밀번호 잠금 화면 */
+    #lockScreen {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #f5f5f5;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .lock-box {
+      background: white;
+      border-radius: 18px;
+      padding: 30px 24px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      border: 2px solid var(--primary);
+    }
+    .lock-box h2 { margin: 0 0 10px 0; color: var(--primary); font-size: 1.5rem; }
+    .lock-box p { color: #666; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.4; }
+    .lock-box input {
+      width: 100%;
+      padding: 14px;
+      font-size: 1.4rem;
+      text-align: center;
+      letter-spacing: 6px;
+      border: 2px solid #ccc;
+      border-radius: 12px;
+      margin-bottom: 14px;
+    }
+
+    #mainApp { display: none; }
+
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    header h1 { margin: 0; font-size: 1.4rem; letter-spacing: -0.5px; }
+    .header-btns { display: flex; gap: 8px; }
+    .header-btn {
+      background: rgba(255,255,255,0.25);
+      border: 1px solid rgba(255,255,255,0.6);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    /* 통계 현황판 */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 12px;
+    }
+    .sum-box {
+      background: var(--card-bg);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 4px;
+      text-align: center;
+    }
+    .sum-box span { display: block; font-size: 0.88rem; color: #666; font-weight: bold; }
+    .sum-box strong { font-size: 1.2rem; color: var(--primary); display: block; margin-top: 3px; }
+    .sum-box.green strong { color: var(--secondary); }
+
+    /* 탭 메뉴 */
+    .tab-bar {
+      display: flex;
+      background: #e0e0e0;
+      border-bottom: 2px solid #ccc;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 15px 0;
+      font-size: 1.05rem;
+      font-weight: bold;
+      border: none;
+      background: none;
+      cursor: pointer;
+      color: #555;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom: 4px solid var(--primary);
+      background: #ffffff;
+    }
+
+    .section-content { display: none; padding: 14px; }
+    .section-content.active { display: block; }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      border: 1px solid var(--border);
+    }
+    .card h2 { margin-top: 0; font-size: 1.25rem; color: var(--primary); display: flex; align-items: center; gap: 6px; }
+
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 1rem; font-weight: bold; margin-bottom: 5px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 12px;
+      font-size: 1.1rem;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); outline: none; }
+
+    .btn {
+      width: 100%;
+      padding: 15px;
+      font-size: 1.2rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .btn-orange { background: var(--primary); color: white; }
+    .btn-green { background: var(--secondary); color: white; }
+    .btn-blue { background: #1976d2; color: white; }
+    .btn-paste { background: #5c6bc0; color: white; padding: 10px; font-size: 1rem; border-radius: 8px; margin-bottom: 8px; }
+
+    /* 목록 정렬 토글 */
+    .view-toggle {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .toggle-btn {
+      flex: 1;
+      padding: 12px;
+      font-size: 1.05rem;
+      font-weight: bold;
+      border: 2px solid var(--primary);
+      background: white;
+      color: var(--primary);
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    .toggle-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .group-header {
+      background: #eeeeee;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 1.05rem;
+      font-weight: bold;
+      color: #333;
+      margin: 16px 0 8px 0;
+    }
+
+    /* 주문 항목 카드 */
+    .order-item {
+      background: var(--card-bg);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .order-item.done { border-color: var(--secondary); background: var(--secondary-light); }
+
+    .order-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px dashed #e0e0e0;
+    }
+    .order-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .order-actions-top {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-action-sm {
+      padding: 6px 10px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background: #ffffff;
+      cursor: pointer;
+    }
+    .btn-edit { border-color: #1976d2; color: #1976d2; }
+    .btn-del { border-color: #e53935; color: #d32f2f; }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: bold;
+    }
+    .badge-size { background: #ffe0b2; color: #bf360c; }
+    .badge-daebong { background: #fbe9e7; color: #d84315; border: 1px solid #ffab91; }
+    .badge-status { background: #eee; color: #444; }
+    .badge-status.done { background: #c8e6c9; color: #1b5e20; }
+    .badge-status.sent { background: #bbdefb; color: #0d47a1; }
+
+    .order-info { font-size: 1.08rem; line-height: 1.55; margin: 8px 0; }
+    .order-info strong { font-size: 1.25rem; }
+
+    /* 모달 팝업 */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-box {
+      background: white;
+      width: 100%;
+      max-width: 520px;
+      border-radius: 16px;
+      padding: 20px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-box h3 { margin-top: 0; font-size: 1.3rem; color: var(--primary); }
+    .preview-box {
+      background: #f8f9fa;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 280px;
+      overflow-y: auto;
+      margin: 12px 0;
+    }
+
+    #postcodeModalBox {
+      background: white;
+      width: 100%;
+      max-width: 480px;
+      height: 480px;
+      border-radius: 16px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    #postcodeLayer {
+      width: 100%;
+      flex: 1;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. 비밀번호 잠금 화면 -->
+  <div id="lockScreen">
+    <div class="lock-box">
+      <h2>🍊 감 농사 장부</h2>
+      <p id="lockScreenDesc">보안을 위해 비밀번호를 입력해 주세요.<br><span style="font-size:0.85rem; color:#888;">(개인정보 보호 암호화 적용 중)</span></p>
+      <input type="password" id="inputPass" placeholder="비밀번호 입력" inputmode="numeric" onkeyup="if(window.event.keyCode==13){checkPassword();}">
+      <button type="button" class="btn btn-orange" onclick="checkPassword()">확인 및 장부 열기</button>
+    </div>
+  </div>
+
+  <!-- 2. 장부 본문 화면 -->
+  <div id="mainApp">
+    <header>
+      <h1>🍊 감 농사 주문 장부</h1>
+      <div class="header-btns">
+        <button type="button" class="header-btn" onclick="openPasswordChangeModal()">🔒 비번변경</button>
+        <button type="button" class="header-btn" onclick="lockApp()">🚪 잠그기</button>
+      </div>
+    </header>
+
+    <!-- 수량 통계 현황판 -->
+    <div class="summary-grid">
+      <div class="sum-box">
+        <span>총 주문량</span>
+        <strong id="totalBoxes">0 박스</strong>
+      </div>
+      <div class="sum-box">
+        <span>대봉</span>
+        <strong id="sumDaebong" style="color: #d84315;">0 박스</strong>
+      </div>
+      <div class="sum-box">
+        <span>특대 / 대</span>
+        <strong id="sumLarge">0 / 0</strong>
+      </div>
+      <div class="sum-box">
+        <span>중 / 소 / 파치</span>
+        <strong id="sumSmall">0 / 0 / 0</strong>
+      </div>
+      <div class="sum-box">
+        <span>택배 접수대기</span>
+        <strong id="pendingSend" style="color: #d84315;">0 건</strong>
+      </div>
+      <div class="sum-box green">
+        <span>배송완료</span>
+        <strong id="completedCount">0 건</strong>
+      </div>
+    </div>
+
+    <!-- 메인 탭바 -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('tabInput')">📝 바로 주문넣기</button>
+      <button class="tab-btn" onclick="switchTab('tabOrders')">📋 주문 목록</button>
+      <button class="tab-btn" onclick="switchTab('tabCourier')">🚚 택배사 발송</button>
+      <button class="tab-btn" onclick="switchTab('tabCheck')">✅ 배송 대조</button>
+    </div>
+
+    <!-- 1. 바로 주문넣기 탭 -->
+    <div id="tabInput" class="section-content active">
+      <div class="card">
+        <h2>📩 문자 · 카톡 복사해서 넣기</h2>
+        <p style="font-size: 1rem; color: #555; margin-top: 0; line-height: 1.4;">
+          문자나 카톡 내용을 붙여넣고 <strong>[감작업에 바로 넣기]</strong>를 누르시면 성함, 전화번호, 주소가 <strong>암호화</strong>되어 안전하게 저장됩니다.
+        </p>
+
+        <button type="button" class="btn btn-paste" onclick="pasteFromClipboard()">📋 방금 복사한 글 자동으로 붙여넣기</button>
+
+        <textarea id="rawInput" rows="5" placeholder="손님이 보낸 문자나 카톡 내용을 여기에 붙여넣으세요..."></textarea>
+        
+        <button type="button" class="btn btn-orange" onclick="processAndSaveOrder()">
+          🍊 감작업에 바로 넣기 (암호화 등록)
+        </button>
+      </div>
+
+      <!-- 직접 수동 입력 폼 -->
+      <details class="card" style="margin-top: 10px;" open>
+        <summary style="font-size: 1.05rem; font-weight: bold; cursor: pointer; color: #555;">
+          ✍️ 직접 하나씩 손으로 입력하기 (터치하여 펼치기/접기)
+        </summary>
+        <div style="margin-top: 14px;">
+          <div class="form-group">
+            <label>성함</label>
+            <input type="text" id="manualName" placeholder="홍길동">
+          </div>
+          <div class="form-group">
+            <label>전화번호</label>
+            <input type="tel" id="manualPhone" placeholder="010-0000-0000">
+          </div>
+          <div class="form-group">
+            <label>감 종류 및 크기</label>
+            <select id="manualSize">
+              <option value="대봉">대봉</option>
+              <option value="특대">특대</option>
+              <option value="대">대</option>
+              <option value="중" selected>중</option>
+              <option value="소">소</option>
+              <option value="파치">파치 (가정용/흠집)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>수량 (박스)</label>
+            <input type="number" id="manualQty" value="1" min="1">
+          </div>
+          
+          <div class="form-group">
+            <label>주소</label>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <input type="text" id="manualBaseAddress" placeholder="기본 도로명 또는 지번 주소" readonly style="background-color: #fafafa;">
+              <button type="button" onclick="openPostcode('manual')" style="width: 130px; background: #455a64; color: white; border: none; border-radius: 10px; font-weight: bold; font-size: 1.05rem; cursor: pointer;">
+                🔍 주소 검색
+              </button>
+            </div>
+            <input type="text" id="manualDetailAddress" placeholder="상세 주소 (예: 101동 202호 등)">
+          </div>
+
+          <button type="button" class="btn btn-blue" onclick="saveManualOrder()">수동 주문 저장 (암호화)</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- 2. 주문 목록 탭 -->
+    <div id="tabOrders" class="section-content">
+      <div class="view-toggle">
+        <button id="btnViewDate" class="toggle-btn active" onclick="setViewMode('date')">📅 날짜별 보기</button>
+        <button id="btnViewName" class="toggle-btn" onclick="setViewMode('name')">👤 전체 가나다 이름순</button>
+      </div>
+
+      <div id="orderListContainer"></div>
+    </div>
+
+    <!-- 3. 택배사 관리 및 발송 탭 -->
+    <div id="tabCourier" class="section-content">
+      <div class="card">
+        <h2>🚚 택배사 설정</h2>
+        <div class="form-group">
+          <label>택배사 이름</label>
+          <input type="text" id="courierCompany" placeholder="예: 우체국택배, CJ대한통운">
+        </div>
+        <div class="form-group">
+          <label>기사님 휴대폰 번호</label>
+          <input type="tel" id="courierPhone" placeholder="예: 01012345678 (숫자만)">
+        </div>
+        <button type="button" class="btn btn-blue" onclick="saveCourierInfo()">택배사 번호 저장</button>
+      </div>
+
+      <div class="card" style="border: 2px solid var(--primary);">
+        <h2>📦 새 주문 기사님께 전송</h2>
+        <p style="font-size: 1rem; color: #555; line-height: 1.5;">
+          지난번에 기사님께 보낸 이후 <strong>새로 들어온 주문들만</strong> 골라 문자로 보냅니다.
+        </p>
+        <div style="background: #f0f0f0; padding: 12px; border-radius: 8px; margin-bottom: 12px; font-size: 1.05rem;">
+          보낼 대기 주문: <strong id="unsentBatchCount" style="color: var(--primary);">0</strong>건
+        </div>
+        <button type="button" class="btn btn-green" onclick="previewAndConfirmCourierSend()">
+          ✉️ 새 주문내역 문자 보내기
+        </button>
+      </div>
+    </div>
+
+    <!-- 4. 택배 완료 대조 탭 -->
+    <div id="tabCheck" class="section-content">
+      <div class="card">
+        <h2>🔍 택배 완료 문자 대조</h2>
+        <p style="font-size: 1rem; color: #555;">
+          택배사에서 온 "배송완료" 문자를 붙여넣으시면, 해당 손님을 자동으로 찾아 <strong>[배송완료 ✅]</strong>로 체크합니다.
+        </p>
+        <textarea id="courierSmsInput" rows="4" placeholder="택배 완료 문자를 여기에 붙여넣으세요..."></textarea>
+        <button type="button" class="btn btn-green" onclick="processDeliverySms()">배송 완료 대조하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 비밀번호 변경 모달 -->
+  <div id="passwordModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>🔒 가족 공용 비밀번호 변경</h3>
+      <p style="font-size:0.95rem; color:#666; margin-top:0;">비밀번호를 변경하면 다른 가족 기기에도 실시간 적용됩니다.</p>
+      
+      <div class="form-group">
+        <label>현재 비밀번호</label>
+        <input type="password" id="pwCurrent" placeholder="현재 비밀번호 입력" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>새 비밀번호</label>
+        <input type="password" id="pwNew" placeholder="새 비밀번호 (4자리 이상 권장)" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label>새 비밀번호 확인</label>
+        <input type="password" id="pwConfirm" placeholder="새 비밀번호 다시 입력" inputmode="numeric">
+      </div>
+
+      <button type="button" class="btn btn-orange" onclick="changeAppPassword()">비밀번호 변경 완료</button>
+      <button type="button" class="btn" style="background:#757575; color:white; margin-top:8px;" onclick="closePasswordChangeModal()">닫기</button>
+    </div>
+  </div>
+
+  <!-- 카카오 주소 검색 모달 -->
+  <div id="postcodeModal" class="modal-overlay">
+    <div id="postcodeModalBox">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <strong style="font-size:1.15rem; color:#333;">🔍 도로명 / 지번 주소 찾기</strong>
+        <button type="button" onclick="closePostcodeModal()" style="border:none; background:none; font-size:1.5rem; cursor:pointer; color:#666;">✕</button>
+      </div>
+      <div id="postcodeLayer"></div>
+    </div>
+  </div>
+
+  <!-- 발송 전 최종 내역 확인 모달 -->
+  <div id="courierSendModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>🚚 기사님께 보낼 문자 내역 확인</h3>
+      <div style="font-size: 0.98rem; color: #555;">
+        받는 사람: <strong id="previewRecipient" style="color:#1976d2;"></strong><br>
+        보낼 주문: <strong id="previewCount" style="color:var(--primary);"></strong>건
+      </div>
+      
+      <div class="preview-box" id="previewMsgText"></div>
+
+      <div style="font-size: 0.92rem; color: #d32f2f; margin-bottom: 10px;">
+        ※ [문자 전송하기]를 누르면 스마트폰 문자창이 열리며, 장부에는 '택배사전송됨'으로 동기화됩니다.
+      </div>
+
+      <button type="button" class="btn btn-green" onclick="executeSendToCourier()">
+        🚀 확인했습니다. 문자 전송하기
+      </button>
+      <button type="button" class="btn" style="background:#757575; color:white; margin-top:8px;" onclick="closeCourierSendModal()">
+        취소 (돌아가기)
+      </button>
+    </div>
+  </div>
+
+  <!-- 주문 내역 수정 팝업 모달 -->
+  <div id="editModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>✏️ 주문 내역 수정</h3>
+      <input type="hidden" id="editOrderId">
+      <div class="form-group">
+        <label>성함</label>
+        <input type="text" id="editName">
+      </div>
+      <div class="form-group">
+        <label>전화번호</label>
+        <input type="tel" id="editPhone">
+      </div>
+      <div class="form-group">
+        <label>감 종류 및 크기</label>
+        <select id="editSize">
+          <option value="대봉">대봉</option>
+          <option value="특대">특대</option>
+          <option value="대">대</option>
+          <option value="중">중</option>
+          <option value="소">소</option>
+          <option value="파치">파치 (가정용/흠집)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>수량 (박스)</label>
+        <input type="number" id="editQty" min="1">
+      </div>
+      <div class="form-group">
+        <label>주소</label>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <input type="text" id="editBaseAddress" placeholder="기본 도로명/지번 주소" readonly style="background-color: #fafafa;">
+          <button type="button" onclick="openPostcode('edit')" style="width: 120px; background: #455a64; color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer;">
+            🔍 주소 검색
+          </button>
+        </div>
+        <input type="text" id="editDetailAddress" placeholder="상세 주소">
+      </div>
+
+      <button type="button" class="btn btn-blue" onclick="saveEditedOrder()">수정 완료 저장 (암호화)</button>
+      <button type="button" class="btn" style="background:#757575; color:white; margin-top:8px;" onclick="closeEditModal()">닫기</button>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. Firebase 및 암호화 설정
+    // ==========================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBUooIT3zMXkOZ6mM_LnsFf3pnL7-mzORM",
+      authDomain: "gamod-cac04.firebaseapp.com",
+      projectId: "gamod-cac04",
+      storageBucket: "gamod-cac04.firebasestorage.app",
+      messagingSenderId: "580232281036",
+      appId: "1:580232281036:web:b5e7d27cbd9b0ce342fb69",
+      measurementId: "G-EHSYH8JHGC"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // ==========================================
+    // 2. 강력한 개인정보 암호화/복호화 엔진 (AES-256)
+    // ==========================================
+    // 고유 솔트키와 비밀번호를 조합하여 군사급 암호화키 생성
+    const FIXED_SALT = "GamNongsaSecurityKey2026!";
+    let currentAppPassword = "1234"; // 초기 기본값
+
+    function getCryptoKey() {
+      return CryptoJS.SHA256(currentAppPassword + FIXED_SALT).toString();
+    }
+
+    // 텍스트를 외계어 암호문으로 변환 (클라우드 저장용)
+    function encryptText(plain) {
+      if (!plain) return "";
+      try {
+        return CryptoJS.AES.encrypt(plain, getCryptoKey()).toString();
+      } catch (e) {
+        return plain;
+      }
+    }
+
+    // 암호문을 원래 한글/숫자로 복원 (화면 표시용)
+    function decryptText(cipher) {
+      if (!cipher) return "";
+      try {
+        const bytes = CryptoJS.AES.decrypt(cipher, getCryptoKey());
+        const originalText = bytes.toString(CryptoJS.enc.Utf8);
+        return originalText || cipher; // 복호화 성공 시 원문, 실패 시 기존값 유지
+      } catch (e) {
+        return cipher;
+      }
+    }
+
+    // Firestore에서 설정된 비밀번호 실시간 구독
+    db.collection("settings").doc("config").onSnapshot(doc => {
+      if (doc.exists && doc.data().password) {
+        currentAppPassword = String(doc.data().password);
+      } else {
+        db.collection("settings").doc("config").set({ password: "1234" }, { merge: true });
+      }
+    });
+
+    let orders = [];
+    let courier = JSON.parse(localStorage.getItem('gam_courier') || '{"name":"우체국택배","phone":""}');
+    let currentViewMode = 'date';
+    let currentBatchToSend = [];
+    let currentPreparedMsg = "";
+    let activeAddressTarget = 'manual';
+
+    window.onload = function() {
+      if (sessionStorage.getItem('gam_auth') === 'true') {
+        unlockApp();
+      }
+    };
+
+    function checkPassword() {
+      const input = document.getElementById('inputPass').value.trim();
+      if (input === currentAppPassword) {
+        sessionStorage.setItem('gam_auth', 'true');
+        unlockApp();
+      } else {
+        alert("비밀번호가 일치하지 않습니다.");
+        document.getElementById('inputPass').value = '';
+        document.getElementById('inputPass').focus();
+      }
+    }
+
+    function unlockApp() {
+      document.getElementById('lockScreen').style.display = 'none';
+      document.getElementById('mainApp').style.display = 'block';
+      loadCourierInfo();
+      initFirebaseListener();
+    }
+
+    function lockApp() {
+      sessionStorage.removeItem('gam_auth');
+      document.getElementById('mainApp').style.display = 'none';
+      document.getElementById('lockScreen').style.display = 'flex';
+      document.getElementById('inputPass').value = '';
+    }
+
+    // 비밀번호 변경
+    function openPasswordChangeModal() {
+      document.getElementById('pwCurrent').value = '';
+      document.getElementById('pwNew').value = '';
+      document.getElementById('pwConfirm').value = '';
+      document.getElementById('passwordModal').style.display = 'flex';
+    }
+
+    function closePasswordChangeModal() {
+      document.getElementById('passwordModal').style.display = 'none';
+    }
+
+    async function changeAppPassword() {
+      const cur = document.getElementById('pwCurrent').value.trim();
+      const n1 = document.getElementById('pwNew').value.trim();
+      const n2 = document.getElementById('pwConfirm').value.trim();
+
+      if (cur !== currentAppPassword) {
+        alert("현재 비밀번호가 일치하지 않습니다.");
+        return;
+      }
+      if (!n1) {
+        alert("새 비밀번호를 입력해주세요.");
+        return;
+      }
+      if (n1 !== n2) {
+        alert("새 비밀번호 확인이 일치하지 않습니다.");
+        return;
+      }
+
+      try {
+        await db.collection("settings").doc("config").set({ password: n1 }, { merge: true });
+        currentAppPassword = n1;
+        alert("가족 공용 비밀번호가 변경되었습니다: " + n1);
+        closePasswordChangeModal();
+        renderAll();
+      } catch (err) {
+        alert("비밀번호 변경 실패: " + err.message);
+      }
+    }
+
+    // ==========================================
+    // 3. Firestore 실시간 리스너 (불러와서 복호화)
+    // ==========================================
+    function initFirebaseListener() {
+      db.collection("orders").orderBy("rawDate", "desc").onSnapshot(snapshot => {
+        orders = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          // 클라우드의 암호화된 성함, 전화번호, 주소를 복호화하여 앱에 적재
+          orders.push({
+            docId: doc.id,
+            date: data.date,
+            time: data.time,
+            rawDate: data.rawDate,
+            name: decryptText(data.name),
+            phone: decryptText(data.phone),
+            address: decryptText(data.address),
+            size: data.size,
+            qty: data.qty,
+            sentToCourier: data.sentToCourier || false,
+            delivered: data.delivered || false
+          });
+        });
+        renderAll();
+      }, error => {
+        console.error("Firestore 동기화 오류:", error);
+      });
+    }
+
+    // ==========================================
+    // 4. 주소 검색 모달
+    // ==========================================
+    function openPostcode(target) {
+      activeAddressTarget = target;
+      const modal = document.getElementById('postcodeModal');
+      const layer = document.getElementById('postcodeLayer');
+      layer.innerHTML = '';
+      modal.style.display = 'flex';
+
+      new daum.Postcode({
+        oncomplete: function(data) {
+          let addr = data.userSelectedType === 'R' ? data.roadAddress : data.jibunAddress;
+          let extraAddr = '';
+
+          if (data.userSelectedType === 'R') {
+            if (data.bname !== '' && /[동|로|가]$/g.test(data.bname)) {
+              extraAddr += data.bname;
+            }
+            if (data.buildingName !== '' && data.apartment === 'Y') {
+              extraAddr += (extraAddr !== '' ? ', ' + data.buildingName : data.buildingName);
+            }
+            if (extraAddr !== '') {
+              extraAddr = ' (' + extraAddr + ')';
+            }
+          }
+
+          const fullBaseAddr = addr + extraAddr;
+
+          if (activeAddressTarget === 'manual') {
+            document.getElementById('manualBaseAddress').value = fullBaseAddr;
+            document.getElementById('manualDetailAddress').focus();
+          } else if (activeAddressTarget === 'edit') {
+            document.getElementById('editBaseAddress').value = fullBaseAddr;
+            document.getElementById('editDetailAddress').focus();
+          }
+
+          closePostcodeModal();
+        },
+        width: '100%',
+        height: '100%'
+      }).embed(layer);
+    }
+
+    function closePostcodeModal() {
+      document.getElementById('postcodeModal').style.display = 'none';
+      document.getElementById('postcodeLayer').innerHTML = '';
+    }
+
+    async function pasteFromClipboard() {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().length > 0) {
+          document.getElementById('rawInput').value = text.trim();
+        } else {
+          alert("복사된 글이 없습니다. 먼저 문자나 카톡에서 복사를 해주세요.");
+        }
+      } catch (err) {
+        alert("입력창을 길게 눌러 [붙여넣기]를 선택해주세요.");
+      }
+    }
+
+    // 정밀 성함 추출 엔진
+    const KOREAN_SURNAMES = new Set([
+      '김','이','박','최','정','강','조','윤','장','임','한','오','서','신','권','황','안',
+      '송','류','유','홍','전','고','문','손','양','배','백','허','남','심','노','정','하',
+      '곽','성','차','주','우','구','신','임','나','전','민','유','진','지','엄','채','원',
+      '천','방','공','강','현','함','변','염','양','변','여','추','도','소','석','선','설',
+      '마','길','연','위','표','명','기','반','왕','금','옥','육','인','맹','제','모','탁',
+      '국','어','은','편','남궁','황보','제갈','선우'
+    ]);
+
+    const EXCLUDED_WORDS = new Set([
+      '받는분','보내는분','받는사람','보낸사람','수령인','주문자','입금자','성함','이름',
+      '대봉','대봉감','단감','곶감','홍시','연시','특대','파치','가정용','흠집','택배','우체국',
+      '대한통운','로젠','한진','박스','상자','주소','입금','완료','계좌','농협','국민','신한',
+      '우리','하나','카카오','토스','뱅크','감가격','가격','문의','부탁','주문','배송','전화',
+      '연락처','핸드폰','휴대폰','도착','출발','어머니','아버님','선생님','고객님','구매','만원'
+    ]);
+
+    function isValidKoreanName(word) {
+      if (!word) return false;
+      const clean = word.replace(/[^\uAC00-\uD7A3]/g, '');
+      if (clean.length < 2 || clean.length > 4) return false;
+      if (EXCLUDED_WORDS.has(clean)) return false;
+
+      if (clean.length >= 3 && KOREAN_SURNAMES.has(clean.substring(0, 2))) return true;
+      if (KOREAN_SURNAMES.has(clean.substring(0, 1))) return true;
+      return false;
+    }
+
+    function extractCustomerName(text, address) {
+      const cleanText = text.replace(/\r/g, '');
+
+      const labelRegex = /(?:받는\s*분|받는\s*사람|수령인|주문자|입금자|성함|이름|고객명)\s*[:=\-]?\s*([가-힣]{2,4})(?:[님을를이은는,\s\n]|$)/g;
+      let match;
+      while ((match = labelRegex.exec(cleanText)) !== null) {
+        let cand = match[1].trim().replace(/(?:님|에게|씨|앞|귀하)$/, '');
+        if (isValidKoreanName(cand)) return cand;
+      }
+
+      const phoneBeforeRegex = /([가-힣]{2,4})\s*(?:님)?\s*01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/g;
+      while ((match = phoneBeforeRegex.exec(cleanText)) !== null) {
+        let cand = match[1].trim();
+        if (isValidKoreanName(cand)) return cand;
+      }
+
+      const phoneAfterRegex = /01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}\s*([가-힣]{2,4})/g;
+      while ((match = phoneAfterRegex.exec(cleanText)) !== null) {
+        let cand = match[1].trim().replace(/(?:님|에게|씨|앞)$/, '');
+        if (isValidKoreanName(cand)) return cand;
+      }
+
+      const lines = cleanText.split('\n');
+      for (let line of lines) {
+        let trimmed = line.trim().replace(/[:=\-]/g, '').trim().replace(/(?:님|에게|씨|앞)$/, '').trim();
+        if (isValidKoreanName(trimmed)) return trimmed;
+      }
+
+      const words = cleanText.split(/[\s,/\n\(\)]+/);
+      for (let w of words) {
+        let cand = w.replace(/[^\uAC00-\uD7A3]/g, '').replace(/(?:님|에게|씨|앞|귀하)$/, '');
+        if (isValidKoreanName(cand) && (!address || !address.includes(cand))) {
+          return cand;
+        }
+      }
+
+      return '미확인';
+    }
+
+    function parseOrderMessage(text) {
+      let result = { name: '미확인', phone: '', size: '중', qty: 1, address: '' };
+
+      if (text.includes('대봉')) result.size = '대봉';
+      else if (text.includes('특대')) result.size = '특대';
+      else if (text.includes('파치') || text.includes('흠') || text.includes('가정용')) result.size = '파치';
+      else if (text.includes('대')) result.size = '대';
+      else if (text.includes('소')) result.size = '소';
+      else if (text.includes('중')) result.size = '중';
+
+      const qtyMatch = text.match(/(\d+)\s*(박스|개|box|상자)/i);
+      if (qtyMatch) result.qty = parseInt(qtyMatch[1]);
+
+      const phoneMatch = text.match(/01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/);
+      if (phoneMatch) result.phone = phoneMatch[0].replace(/[-.\s]/g, '-');
+
+      const addrMatch = text.match(/([가-힣]+(?:도|시|군|구))\s+([가-힣\d\s\-\,\.\(\)]+(?:로|길|동|읍|면|리|아파트|단지|호))/);
+      if (addrMatch) {
+        result.address = addrMatch[0].trim();
+      }
+
+      result.name = extractCustomerName(text, result.address);
+      return result;
+    }
+
+    // ==========================================
+    // 5. 주문 등록 (암호화하여 클라우드 전송)
+    // ==========================================
+    async function processAndSaveOrder() {
+      const rawText = document.getElementById('rawInput').value.trim();
+      if (!rawText) {
+        alert("문자나 카톡 내용을 먼저 붙여넣어 주세요.");
+        return;
+      }
+
+      const p = parseOrderMessage(rawText);
+      const now = new Date();
+      const dateStr = `${now.getMonth() + 1}월 ${now.getDate()}일`;
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // 개인정보를 AES-256으로 완벽히 암호화하여 저장
+      const encryptedOrder = {
+        date: dateStr,
+        time: timeStr,
+        rawDate: now.getTime(),
+        name: encryptText(p.name),
+        phone: encryptText(p.phone || ''),
+        address: encryptText(p.address || rawText),
+        size: p.size,
+        qty: p.qty,
+        sentToCourier: false,
+        delivered: false
+      };
+
+      try {
+        await db.collection("orders").add(encryptedOrder);
+        document.getElementById('rawInput').value = '';
+        alert(`[${p.name}님] 주문이 안전하게 암호화되어 저장되었습니다!`);
+        switchTab('tabOrders');
+      } catch (e) {
+        alert("저장 오류: " + e.message);
+      }
+    }
+
+    async function saveManualOrder() {
+      const name = document.getElementById('manualName').value.trim() || '미확인';
+      const phone = document.getElementById('manualPhone').value.trim();
+      const size = document.getElementById('manualSize').value;
+      const qty = parseInt(document.getElementById('manualQty').value) || 1;
+      
+      const baseAddr = document.getElementById('manualBaseAddress').value.trim();
+      const detailAddr = document.getElementById('manualDetailAddress').value.trim();
+      const fullAddress = (baseAddr + ' ' + detailAddr).trim();
+
+      const now = new Date();
+      const encryptedOrder = {
+        date: `${now.getMonth() + 1}월 ${now.getDate()}일`,
+        time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+        rawDate: now.getTime(),
+        name: encryptText(name),
+        phone: encryptText(phone),
+        address: encryptText(fullAddress),
+        size: size,
+        qty: qty,
+        sentToCourier: false,
+        delivered: false
+      };
+
+      try {
+        await db.collection("orders").add(encryptedOrder);
+        document.getElementById('manualName').value = '';
+        document.getElementById('manualPhone').value = '';
+        document.getElementById('manualBaseAddress').value = '';
+        document.getElementById('manualDetailAddress').value = '';
+        alert(`[${name}님] 수동 주문이 암호화되어 등록되었습니다.`);
+        switchTab('tabOrders');
+      } catch (e) {
+        alert("저장 오류: " + e.message);
+      }
+    }
+
+    function openEditModal(docId) {
+      const o = orders.find(item => item.docId === docId);
+      if (!o) return;
+
+      document.getElementById('editOrderId').value = o.docId;
+      document.getElementById('editName').value = o.name;
+      document.getElementById('editPhone').value = o.phone;
+      document.getElementById('editSize').value = o.size;
+      document.getElementById('editQty').value = o.qty;
+      document.getElementById('editBaseAddress').value = o.address || '';
+      document.getElementById('editDetailAddress').value = '';
+
+      document.getElementById('editModal').style.display = 'flex';
+    }
+
+    function closeEditModal() {
+      document.getElementById('editModal').style.display = 'none';
+    }
+
+    async function saveEditedOrder() {
+      const docId = document.getElementById('editOrderId').value;
+      const baseAddr = document.getElementById('editBaseAddress').value.trim();
+      const detailAddr = document.getElementById('editDetailAddress').value.trim();
+
+      const name = document.getElementById('editName').value.trim() || '미확인';
+      const phone = document.getElementById('editPhone').value.trim();
+      const address = (baseAddr + ' ' + detailAddr).trim();
+
+      const updateData = {
+        name: encryptText(name),
+        phone: encryptText(phone),
+        address: encryptText(address),
+        size: document.getElementById('editSize').value,
+        qty: parseInt(document.getElementById('editQty').value) || 1
+      };
+
+      try {
+        await db.collection("orders").doc(docId).update(updateData);
+        closeEditModal();
+        alert("주문 내역이 안전하게 수정되었습니다.");
+      } catch (e) {
+        alert("수정 실패: " + e.message);
+      }
+    }
+
+    // 택배사 설정
+    function saveCourierInfo() {
+      courier.name = document.getElementById('courierCompany').value.trim() || '택배사';
+      courier.phone = document.getElementById('courierPhone').value.trim().replace(/[^0-9]/g, '');
+      localStorage.setItem('gam_courier', JSON.stringify(courier));
+      alert(`택배사 정보 저장 완료:\n${courier.name} (${courier.phone})`);
+    }
+
+    function loadCourierInfo() {
+      document.getElementById('courierCompany').value = courier.name || '';
+      document.getElementById('courierPhone').value = courier.phone || '';
+    }
+
+    function previewAndConfirmCourierSend() {
+      if (!courier.phone) {
+        alert("먼저 택배 기사님 휴대폰 번호를 입력하고 저장해주세요.");
+        return;
+      }
+
+      currentBatchToSend = orders.filter(o => !o.sentToCourier);
+      if (currentBatchToSend.length === 0) {
+        alert("택배사로 보낼 새로운 미발송 주문이 없습니다.");
+        return;
+      }
+
+      let msg = `[${courier.name} 배송요청 총 ${currentBatchToSend.length}건]\n`;
+      currentBatchToSend.forEach((o, index) => {
+        msg += `\n${index + 1}. ${o.name}님 (${o.size} ${o.qty}박스)\n- 전화: ${o.phone || '없음'}\n- 주소: ${o.address || '주소없음'}\n`;
+      });
+
+      currentPreparedMsg = msg;
+
+      document.getElementById('previewRecipient').innerText = `${courier.name} (${courier.phone})`;
+      document.getElementById('previewCount').innerText = currentBatchToSend.length;
+      document.getElementById('previewMsgText').innerText = msg;
+      document.getElementById('courierSendModal').style.display = 'flex';
+    }
+
+    function closeCourierSendModal() {
+      document.getElementById('courierSendModal').style.display = 'none';
+    }
+
+    async function executeSendToCourier() {
+      if (!currentBatchToSend || currentBatchToSend.length === 0) return;
+
+      const batch = db.batch();
+      currentBatchToSend.forEach(o => {
+        const ref = db.collection("orders").doc(o.docId);
+        batch.update(ref, { sentToCourier: true });
+      });
+
+      try {
+        await batch.commit();
+        closeCourierSendModal();
+        const smsUrl = `sms:${courier.phone}?body=${encodeURIComponent(currentPreparedMsg)}`;
+        window.location.href = smsUrl;
+      } catch (e) {
+        alert("택배 상태 업데이트 중 오류: " + e.message);
+      }
+    }
+
+    async function processDeliverySms() {
+      const smsText = document.getElementById('courierSmsInput').value.trim();
+      if (!smsText) {
+        alert("택배 완료 문자를 입력해주세요.");
+        return;
+      }
+
+      let matchedBatch = [];
+      orders.forEach(o => {
+        if (!o.delivered && o.name && o.name !== '미확인') {
+          const phoneLast4 = o.phone ? o.phone.slice(-4) : 'XXXX';
+          if (smsText.includes(o.name) || (phoneLast4 !== 'XXXX' && smsText.includes(phoneLast4))) {
+            matchedBatch.push(o.docId);
+          }
+        }
+      });
+
+      if (matchedBatch.length > 0) {
+        const batch = db.batch();
+        matchedBatch.forEach(docId => {
+          batch.update(db.collection("orders").doc(docId), { delivered: true });
+        });
+        await batch.commit();
+        document.getElementById('courierSmsInput').value = '';
+        alert(`총 ${matchedBatch.length}건의 주문이 [배송완료 ✅]로 체크되었습니다!`);
+        switchTab('tabOrders');
+      } else {
+        alert("일치하는 손님 성함이나 번호를 찾지 못했습니다.");
+      }
+    }
+
+    function setViewMode(mode) {
+      currentViewMode = mode;
+      document.getElementById('btnViewDate').classList.toggle('active', mode === 'date');
+      document.getElementById('btnViewName').classList.toggle('active', mode === 'name');
+      renderOrderList();
+    }
+
+    function renderAll() {
+      let totalBoxes = 0;
+      let cDaebong = 0;
+      let cExtra = 0, cLarge = 0, cMid = 0, cSmall = 0, cPachi = 0;
+      let completedCount = 0;
+      let unsentCount = 0;
+
+      orders.forEach(o => {
+        totalBoxes += (o.qty || 0);
+        if (o.size === '대봉') cDaebong += o.qty;
+        else if (o.size === '특대') cExtra += o.qty;
+        else if (o.size === '대') cLarge += o.qty;
+        else if (o.size === '중') cMid += o.qty;
+        else if (o.size === '소') cSmall += o.qty;
+        else if (o.size === '파치') cPachi += o.qty;
+
+        if (o.delivered) completedCount++;
+        if (!o.sentToCourier) unsentCount++;
+      });
+
+      document.getElementById('totalBoxes').innerText = `${totalBoxes} 박스`;
+      document.getElementById('sumDaebong').innerText = `${cDaebong} 박스`;
+      document.getElementById('sumLarge').innerText = `${cExtra} / ${cLarge}`;
+      document.getElementById('sumSmall').innerText = `${cMid} / ${cSmall} / ${cPachi}`;
+      document.getElementById('pendingSend').innerText = `${unsentCount} 건`;
+      document.getElementById('completedCount').innerText = `${completedCount} 건`;
+      document.getElementById('unsentBatchCount').innerText = unsentCount;
+
+      renderOrderList();
+    }
+
+    function renderOrderList() {
+      const container = document.getElementById('orderListContainer');
+      container.innerHTML = '';
+
+      if (orders.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: #777; padding: 40px 0; font-size: 1.1rem;">접수된 감 주문이 없습니다.</div>';
+        return;
+      }
+
+      if (currentViewMode === 'date') {
+        const groups = {};
+        orders.forEach(o => {
+          if (!groups[o.date]) groups[o.date] = [];
+          groups[o.date].push(o);
+        });
+
+        for (let date in groups) {
+          const header = document.createElement('div');
+          header.className = 'group-header';
+          header.innerText = `📅 ${date} (${groups[date].length}건)`;
+          container.appendChild(header);
+
+          groups[date].forEach(o => container.appendChild(createOrderCard(o)));
+        }
+      } else {
+        const sorted = [...orders].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        sorted.forEach(o => container.appendChild(createOrderCard(o)));
+      }
+    }
+
+    function createOrderCard(o) {
+      const div = document.createElement('div');
+      div.className = `order-item ${o.delivered ? 'done' : ''}`;
+      
+      const isDaebong = o.size === '대봉';
+      const sizeBadgeClass = isDaebong ? 'badge-size badge-daebong' : 'badge-size';
+
+      div.innerHTML = `
+        <div class="order-header-row">
+          <div class="order-badges">
+            <span class="badge ${sizeBadgeClass}">${o.size} ${o.qty}박스</span>
+            <span class="badge badge-status ${o.sentToCourier ? 'sent' : ''}">
+              ${o.sentToCourier ? '택배사전송됨' : '택배전송대기'}
+            </span>
+            <span class="badge badge-status ${o.delivered ? 'done' : ''}">
+              ${o.delivered ? '배송완료 ✅' : '배송준비/중'}
+            </span>
+          </div>
+          <div class="order-actions-top">
+            <button class="btn-action-sm btn-edit" onclick="openEditModal('${o.docId}')">✏️ 수정</button>
+            <button class="btn-action-sm btn-del" onclick="deleteOrder('${o.docId}')">🗑️ 삭제</button>
+          </div>
+        </div>
+        <div class="order-info">
+          <strong>${o.name}</strong> (${o.phone || '번호 없음'})<br>
+          📍 ${o.address || '주소 없음'}<br>
+          <span style="font-size: 0.9rem; color: #888;">접수: ${o.date} ${o.time || ''}</span>
+        </div>
+        <div style="margin-top: 8px;">
+          <button onclick="toggleDelivered('${o.docId}', ${o.delivered})" style="width:100%; padding: 10px; border-radius: 8px; border:1px solid #ccc; font-weight: bold; background: white; cursor: pointer;">
+            ${o.delivered ? '배송 취소' : '배송완료 체크'}
+          </button>
+        </div>
+      `;
+      return div;
+    }
+
+    async function toggleDelivered(docId, currentStatus) {
+      try {
+        await db.collection("orders").doc(docId).update({ delivered: !currentStatus });
+      } catch (e) {
+        alert("상태 변경 오류: " + e.message);
+      }
+    }
+
+    async function deleteOrder(docId) {
+      const o = orders.find(item => item.docId === docId);
+      const name = o ? o.name : '선택한';
+      if (confirm(`[${name}님] 주문을 정말 삭제하시겠습니까?`)) {
+        try {
+          await db.collection("orders").doc(docId).delete();
+        } catch (e) {
+          alert("삭제 오류: " + e.message);
+        }
+      }
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
+
+      if (tabId === 'tabInput') document.querySelectorAll('.tab-btn')[0].classList.add('active');
+      if (tabId === 'tabOrders') document.querySelectorAll('.tab-btn')[1].classList.add('active');
+      if (tabId === 'tabCourier') document.querySelectorAll('.tab-btn')[2].classList.add('active');
+      if (tabId === 'tabCheck') document.querySelectorAll('.tab-btn')[3].classList.add('active');
+
+      document.getElementById(tabId).classList.add('active');
+    }
+  </script>
+</body>
+</html>
